@@ -8,7 +8,7 @@ A two-stage deep learning system for automated post-disaster damage assessment u
 
 ---
 
-## 🎯 Project Overview
+## Project Overview
 
 PCDASNet (Post-disaster Change Detection and Assessment System Network) implements a sophisticated pipeline for analyzing satellite imagery before and after natural disasters. The system automatically identifies damaged buildings and classifies the severity of damage, enabling rapid assessment for disaster response teams.
 
@@ -22,7 +22,7 @@ PCDASNet (Post-disaster Change Detection and Assessment System Network) implemen
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 ### Overall Pipeline Diagram
 
@@ -191,52 +191,7 @@ Download the dataset from: **[https://xview2.org/download](https://xview2.org/do
 
 ---
 
-## 🛠️ Installation
-
-### Prerequisites
-```bash
-Python 3.8+
-CUDA 11.0+ (for GPU support)
-```
-
-### Setup
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/PCDASNet.git
-cd PCDASNet
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### requirements.txt
-```
-tensorflow>=2.8.0
-numpy>=1.21.0
-matplotlib>=3.4.0
-scipy>=1.7.0
-scikit-image>=0.18.0
-opencv-python>=4.5.0
-```
-
-### Dataset Structure
-```
-xbd/
-├── tier3/
-│   ├── images/
-│   │   ├── *_pre_disaster.png
-│   │   └── *_post_disaster.png
-│   └── masks/
-│       ├── *_pre_disaster.png
-│       └── *_post_disaster.png
-└── test/
-    ├── images/
-    └── masks/
-```
-
----
-
-## 🚀 Usage
+##  Usage
 
 ### Stage 1: Building Localization
 
@@ -444,35 +399,6 @@ The system successfully demonstrates:
 
 ---
 
-## 📁 Project Structure
-
-```
-PCDASNet/
-├── models/
-│   ├── unet.py                    # Stage 1 U-Net architecture
-│   ├── siamese_unet.py            # Stage 2 Siamese U-Net
-│   └── attention_modules.py       # DAM, CBAM, SSAM implementations
-├── data/
-│   ├── data_pipeline.py           # Dataset loading and augmentation
-│   └── preprocessing.py           # SLIC and GPU-optimized preprocessing
-├── utils/
-│   ├── gpu_config.py              # GPU setup and mixed precision
-│   ├── losses.py                  # Custom loss functions
-│   ├── metrics.py                 # xView2 evaluation metrics
-│   └── postprocessing.py          # Morphological ops, superpixel voting
-├── notebooks/
-│   ├── stage1_training.ipynb      # Stage 1 training notebook
-│   ├── stage2_training.ipynb      # Stage 2 training notebook
-│   └── visualization.ipynb        # Results visualization
-├── train_stage1.py                # Stage 1 training script
-├── train_stage2.py                # Stage 2 training script
-├── inference.py                   # Inference and evaluation
-├── requirements.txt               # Python dependencies
-└── README.md                      # This file
-```
-
----
-
 ## 📊 Evaluation Metrics
 
 Following the xView2 challenge protocol:
@@ -512,46 +438,14 @@ xView2_Score = 0.3 × F1loc + 0.7 × mean(F1cls₀, F1cls₁, F1cls₂, F1cls₃
 
 Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
 
-### Development Setup
-```bash
-# Fork and clone the repository
-git clone https://github.com/yourusername/PCDASNet.git
-cd PCDASNet
-
-# Create a virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
-pytest tests/
-
-# Create your feature branch
-git checkout -b feature/amazing-feature
-
-# Make changes and commit
-git commit -m 'Add amazing feature'
-
-# Push and create PR
-git push origin feature/amazing-feature
-```
-
----
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ---
 
 ## 👥 Authors
 
-**Your Name**
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
-- Email: your.email@example.com
+**Abdul Hadi Zeeshan**
+- GitHub: [@ahz002](https://github.com/AHZ002)
+- LinkedIn: [Abdul Hadi](https://www.linkedin.com/in/abdul-hadi-070727259/)
+- Email: abdulhadizeeshan79@gmail.com
 
 ---
 
@@ -577,32 +471,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 5. **Lin, T. Y., et al. (2017)**. "Focal Loss for Dense Object Detection." *ICCV*.
 
 6. **Daudt, R. C., et al. (2018)**. "Fully Convolutional Siamese Networks for Change Detection." *ICIP*.
-
----
-
-## 📧 Contact
-
-For questions, collaborations, or research inquiries:
-- **Email**: your.email@example.com
-- **GitHub Issues**: [Project Issues](https://github.com/yourusername/PCDASNet/issues)
-- **Project Website**: [PCDASNet Documentation](https://yourusername.github.io/PCDASNet)
-
----
-
-## 📄 Citation
-
-If you use this code or methodology in your research, please cite:
-
-```bibtex
-@misc{pcdasnet2025,
-  author = {Your Name},
-  title = {PCDASNet: Post-disaster Change Detection and Assessment System},
-  year = {2025},
-  publisher = {GitHub},
-  url = {https://github.com/yourusername/PCDASNet}
-}
-```
-
 ---
 
 <div align="center">
