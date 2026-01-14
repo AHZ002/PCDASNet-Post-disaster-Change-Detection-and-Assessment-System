@@ -91,8 +91,8 @@ Pre-disaster Image (+ SLIC)        Post-disaster Image (+ SLIC)
 **Output:** Binary building mask P_b ∈ {0,1}^(1×H×W)
 
 **Mask Expansion:**
-```
-P_B = MD(P_b)  ... Equation (1)
+```math
+P_B = MD(P_b)  \quad \text{... Equation (1)}
 ```
 Morphological dilation to include surrounding environment. This expanded mask represents building + nearby context and is used as prior knowledge in Stage 2.
 
@@ -104,21 +104,21 @@ Morphological dilation to include surrounding environment. This expanded mask re
 - Superpixel-augmented versions of both images (via SLIC)
 - Expanded building mask P_B from Stage 1
 
-**Network:** Siamese encoder-decoder with weights initialized from Stage 1, featuring:
+**Network:** Siamese encoder-decoder with **encoder weights pretrained from Stage 1** (decoder and attention modules trained from scratch), featuring:
 - Dual branches for pre-disaster & post-disaster processing
 - Differential Attention Module (DAM) in skip connections
-- Shared encoder weights
+- Shared encoder weights initialized from Stage 1 localization network
 
 **Intermediate Output:** Pixel-wise damage prediction P_d ∈ {0,1,2,3}^(1×H×W)
 
 **Post-processing:** Superpixel-based voting
-```
-P_D = SPP(P_d)  ... Equation (2)
+```math
+P_D = \text{SPP}(P_d)  \quad \text{... Equation (2)}
 ```
 
 **Final Output:** Combined localization + damage classification
-```
-P = P_B ⊙ P_D  ... Equation (3)
+```math
+P = P_B \odot P_D  \quad \text{... Equation (3)}
 ```
 
 ---
@@ -130,25 +130,25 @@ DAM explicitly models bi-temporal change features and is guided by building posi
 ### Shallow DAM (High Resolution Features)
 
 **Step 1: Feature Difference**
-```
-F_DIFF,1^S = F_pre^S - F_post^S  ... Equation (4)
+```math
+F_{\text{DIFF},1}^S = F_{\text{pre}}^S - F_{\text{post}}^S  \quad \text{... Equation (4)}
 ```
 
 **Step 2: Channel + Spatial Attention (CBAM)**
-```
-F_DIFF,2^S = CBAM(F_DIFF,1^S)  ... Equation (5)
+```math
+F_{\text{DIFF},2}^S = \text{CBAM}(F_{\text{DIFF},1}^S)  \quad \text{... Equation (5)}
 ```
 
 **Step 3: Position-Constrained Attention** (from Stage 1 mask)
 
 Attention map:
-```
-A = Σ_j exp(W_q * P_B,j) / Σ_m exp(W_q * P_B,m)  ... Equation (6)
+```math
+A = \frac{\sum_j \exp(W_q \cdot P_{B,j})}{\sum_m \exp(W_q \cdot P_{B,m})}  \quad \text{... Equation (6)}
 ```
 
 Final constrained differential feature:
-```
-F_DIFF,3^S = A(W_k * F_DIFF,2^S) + (W_v * F_DIFF,2^S)  ... Equation (7)
+```math
+F_{\text{DIFF},3}^S = A(W_k \cdot F_{\text{DIFF},2}^S) + (W_v \cdot F_{\text{DIFF},2}^S)  \quad \text{... Equation (7)}
 ```
 
 ### Simple Self-Attention Module (SSAM)
@@ -156,20 +156,230 @@ F_DIFF,3^S = A(W_k * F_DIFF,2^S) + (W_v * F_DIFF,2^S)  ... Equation (7)
 Applied only to pre-disaster shallow features:
 
 **Attention:**
-```
-A_pre = Σ_j exp(W_q * F_pre,j^S) / Σ_m exp(W_q * F_pre,m^S)  ... Equation (8)
+```math
+A_{\text{pre}} = \frac{\sum_j \exp(W_q \cdot F_{\text{pre},j}^S)}{\sum_m \exp(W_q \cdot F_{\text{pre},m}^S)}  \quad \text{... Equation (8)}
 ```
 
 **Enhanced pre-disaster feature:**
-```
-F̂_pre^S = A_pre(W_k * F_pre^S) + (W_v * F_pre^S)  ... Equation (9)
+```math
+\hat{F}_{\text{pre}}^S = A_{\text{pre}}(W_k \cdot F_{\text{pre}}^S) + (W_v \cdot F_{\text{pre}}^S)  \quad \text{... Equation (9)}
 ```
 
 ### Deep DAM (Low Resolution Features)
 
 No position constraint, no SSAM, only CBAM on feature differences:
+```math
+F_{\text{DIFF}}^D = \text{CBAM}(F_{\text{pre}}^D - F_{\text{post}}^D)  \quad \text{... Equation (10)}
 ```
-F_DIFF^D = CBAM(F_pre^D - F_post^D)  ... Equation (10)
+
+---
+
+## 🧩 Implementation Details
+
+### CBAM (Convolutional Block Attention Module)
+
+The CBAM module consists of two sequential attention mechanisms:
+
+**Channel Attention:**
+- Uses both average pooling and max pooling operations
+- Applies shared MLP (Multi-Layer Perceptron) with reduction ratio of 8
+- Combines both pathways with element-wise addition followed by sigmoid activation
+
+**Spatial Attention:**
+- Computes channel-wise average and max pooling along the channel dimension
+- Concatenates the two feature maps
+- Applies 7×7 convolution with sigmoid activation
+
+**Implementation:**
+```python
+def cbam_module(x, ratio=8):
+    channel = x.shape[-1]
+    
+    # Channel attention
+    avg_pool = GlobalAveragePooling2D()(x)
+    avg_pool = Reshape((1, 1, channel))(avg_pool)
+    max_pool = GlobalMaxPooling2D()(x)
+    max_pool = Reshape((1, 1, channel))(max_pool)
+    
+    shared_dense_one = Dense(channel // ratio, activation='relu')
+    shared_dense_two = Dense(channel)
+    
+    avg_out = shared_dense_two(shared_dense_one(avg_pool))
+    max_out = shared_dense_two(shared_dense_one(max_pool))
+    channel_attention = Activation('sigmoid')(Add()([avg_out, max_out]))
+    x_channel_refined = Multiply()([x, channel_attention])
+    
+    # Spatial attention
+    avg_pool_spatial = Lambda(lambda z: tf.reduce_mean(z, axis=-1, keepdims=True))(x_channel_refined)
+    max_pool_spatial = Lambda(lambda z: tf.reduce_max(z, axis=-1, keepdims=True))(x_channel_refined)
+    concat = Concatenate(axis=-1)([avg_pool_spatial, max_pool_spatial])
+    spatial_attention = Conv2D(1, (7,7), padding='same', activation='sigmoid')(concat)
+    refined = Multiply()([x_channel_refined, spatial_attention])
+    
+    return refined
+```
+
+### SSAM (Simple Self-Attention Module)
+
+SSAM enhances pre-disaster features by computing spatial self-attention:
+
+**Implementation:**
+```python
+def ssam_module(x):
+    """
+    Applies 1×1 convolution to compute queries,
+    generates attention map with softmax,
+    then reweights the feature map.
+    """
+    query = Conv2D(x.shape[-1], (1, 1), padding='same')(x)
+    attention = Softmax(axis=1)(query)
+    output = Add()([x, Multiply()([x, attention])])
+    return output
+```
+
+**Key Features:**
+- Applied only to pre-disaster features in shallow DAMs
+- Captures fine-grained spatial dependencies
+- Helps preserve structural details before disaster
+
+### Differential Attention Module (Complete Implementation)
+
+```python
+def differential_attention_module(f_pre, f_post, mask=None, use_ssam=True):
+    """
+    Computes difference between pre-disaster and post-disaster features,
+    refines using CBAM, optionally applies SSAM on pre-disaster branch,
+    and fuses all features.
+    
+    Args:
+        f_pre: Pre-disaster features
+        f_post: Post-disaster features
+        mask: Building position mask (optional)
+        use_ssam: Whether to apply SSAM on pre-disaster features
+    
+    Returns:
+        fused: Fused features combining pre, post, and differential information
+    """
+    # Step 1: Compute raw difference
+    diff_raw = Subtract()([f_pre, f_post])
+    
+    # Step 2: Refine difference using CBAM
+    diff_refined = cbam_module(diff_raw)
+    
+    # Step 3: Optionally refine pre-disaster features using SSAM
+    f_pre_refined = ssam_module(f_pre) if use_ssam else f_pre
+    
+    # Step 4: Apply building mask constraint (if provided)
+    if mask is not None:
+        mask_resized = ResizeLike(method="nearest")([mask, diff_refined])
+        diff_refined = Multiply()([diff_refined, mask_resized])
+    
+    # Step 5: Fuse pre-disaster, differential, and post-disaster features
+    fused_pre = Conv2D(f_pre_refined.shape[-1], (1, 1), padding='same')(f_pre_refined)
+    fused_diff = Conv2D(f_pre_refined.shape[-1], (1, 1), padding='same')(diff_refined)
+    fused_post = Conv2D(f_pre_refined.shape[-1], (1, 1), padding='same')(f_post)
+    fused = Add()([fused_pre, fused_diff, fused_post])
+    
+    return fused
+```
+
+### ResizeLike Custom Layer
+
+A utility layer for dynamically resizing masks to match feature map dimensions:
+
+```python
+class ResizeLike(tf.keras.layers.Layer):
+    """
+    Custom layer that resizes the first input tensor to match
+    the spatial dimensions of the second input tensor.
+    """
+    def __init__(self, method="nearest", **kwargs):
+        super(ResizeLike, self).__init__(**kwargs)
+        self.method = method
+
+    def call(self, inputs):
+        mask, target = inputs
+        target_shape = tf.shape(target)[1:3]
+        return tf.image.resize(mask, target_shape, method=self.method)
+
+    def compute_output_shape(self, input_shape):
+        mask_shape, target_shape = input_shape
+        return (mask_shape[0], target_shape[1], target_shape[2], mask_shape[3])
+```
+
+### Superpixel-Based Post-Processing
+
+**Superpixel Voting:**
+```python
+def superpixel_postprocessing(damage_pred, pre_segments, building_mask):
+    """
+    Apply superpixel-based post-processing to smooth damage classification.
+    
+    Args:
+        damage_pred: Predicted damage classification (one-hot encoded)
+        pre_segments: Superpixel segmentation of pre-disaster image
+        building_mask: Binary mask indicating building locations
+        
+    Returns:
+        refined_pred: Refined damage classification after superpixel voting
+    """
+    refined_pred = np.zeros_like(damage_pred)
+    building_pixels = building_mask > 0.5
+    
+    # For each superpixel in the pre-disaster image
+    for segment_id in np.unique(pre_segments):
+        sp_mask = pre_segments == segment_id
+        
+        # Only process superpixels overlapping with buildings
+        if np.any(sp_mask & building_pixels):
+            for c in range(damage_pred.shape[-1]):
+                votes = damage_pred[sp_mask, c]
+                if len(votes) > 0:
+                    # Soft voting: use mean probability
+                    refined_pred[sp_mask, c] = np.mean(votes)
+    
+    # Normalize to ensure classes sum to 1
+    class_sum = np.sum(refined_pred, axis=-1, keepdims=True)
+    class_sum = np.maximum(class_sum, 1e-10)
+    refined_pred = refined_pred / class_sum
+    
+    return refined_pred
+```
+
+**Instance-Level Voting:**
+```python
+def instance_voting(damage_pred, building_instances):
+    """
+    Apply instance-level voting for semantic consistency within buildings.
+    
+    Args:
+        damage_pred: Predicted damage classification (one-hot encoded)
+        building_instances: Instance segmentation (unique ID per building)
+        
+    Returns:
+        instance_refined: Damage classification with consistent per-building labels
+    """
+    instance_refined = np.zeros_like(damage_pred)
+    
+    # For each building instance
+    for instance_id in np.unique(building_instances):
+        if instance_id == 0:  # Skip background
+            continue
+            
+        instance_mask = building_instances == instance_id
+        
+        # Assign majority vote to all pixels in this building
+        for c in range(damage_pred.shape[-1]):
+            votes = damage_pred[instance_mask, c]
+            if len(votes) > 0:
+                instance_refined[instance_mask, c] = np.mean(votes)
+    
+    # Normalize
+    class_sum = np.sum(instance_refined, axis=-1, keepdims=True)
+    class_sum = np.maximum(class_sum, 1e-10)
+    instance_refined = instance_refined / class_sum
+    
+    return instance_refined
 ```
 
 ---
@@ -257,7 +467,7 @@ shared_enc.load_weights('stage1_encoder_weights.weights.h5')
 # Create Stage 2 dataset with GPU optimization
 from data.preprocessing import create_optimized_dataset
 stage2_dataset = create_optimized_dataset(
-    pre_files, post_files, mask_files, batch_size=4
+    pre_files, post_files, mask_files, batch_size=2  # Reduced for GPU memory
 )
 
 # Build and compile damage classification model
@@ -272,7 +482,7 @@ damage_model.compile(
 history_stage2 = damage_model.fit(
     stage2_dataset,
     epochs=20,
-    steps_per_epoch=len(pre_files) // batch_size,
+    steps_per_epoch=len(pre_files) // 2,  # Batch size = 2
     callbacks=callbacks
 )
 
@@ -316,21 +526,22 @@ plt.show()
 ## 📐 Loss Functions
 
 ### Stage 1: Building Extraction Loss
+```math
+\mathcal{L}_1 = 0.7 \times \mathcal{L}_{\text{BCE}} + 0.3 \times \mathcal{L}_{\text{dice}}  \quad \text{... Equation (11)}
 ```
-L_1 = λ_1 * L_dice + λ_2 * L_focal  ... Equation (11)
-```
-where λ_1 = 0.3, λ_2 = 0.7
-
-### Stage 2: Damage Classification Loss
-```
-L_2 = λ_1 * L_dice + λ_2 * L_focal + λ_3 * L_ce  ... Equation (12)
-```
-where λ_1 = 0.3, λ_2 = 0.3, λ_3 = 0.4
 
 **Loss Components:**
-- **Dice Loss**: Addresses class imbalance in segmentation
-- **Focal Loss**: Focuses on hard-to-classify pixels
-- **Cross-Entropy Loss**: Standard multi-class classification loss
+- **Weighted Binary Cross-Entropy (BCE)**: Weight of 15 for building class to address class imbalance
+- **Dice Loss**: Optimizes segmentation overlap directly
+
+### Stage 2: Damage Classification Loss
+```math
+\mathcal{L}_2 = 0.5 \times \mathcal{L}_{\text{dice}} + 0.5 \times \mathcal{L}_{\text{focal}}  \quad \text{... Equation (12)}
+```
+
+**Loss Components:**
+- **Dice Loss (Multi-class)**: Addresses class imbalance in 4-class segmentation
+- **Focal Loss**: Focuses learning on hard-to-classify pixels (γ=2.0, α=0.25)
 
 ---
 
@@ -414,8 +625,8 @@ Per-class F1 scores for damage levels:
 - F1cls₃: Destroyed
 
 ### Overall xView2 Score
-```
-xView2_Score = 0.3 × F1loc + 0.7 × mean(F1cls₀, F1cls₁, F1cls₂, F1cls₃)
+```math
+\text{xView2\_Score} = 0.3 \times F1_{\text{loc}} + 0.7 \times \text{mean}(F1_{\text{cls}_0}, F1_{\text{cls}_1}, F1_{\text{cls}_2}, F1_{\text{cls}_3})
 ```
 
 ---
