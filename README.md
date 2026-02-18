@@ -242,7 +242,7 @@ def ssam_module(x):
 - Captures fine-grained spatial dependencies
 - Helps preserve structural details before disaster
 
-### Differential Attention Module (Complete Implementation)
+### Differential Attention Module
 
 ```python
 def differential_attention_module(f_pre, f_post, mask=None, use_ssam=True):
